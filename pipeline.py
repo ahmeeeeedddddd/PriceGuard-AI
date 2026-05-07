@@ -22,7 +22,9 @@ Usage
 
 import os
 import sys
+import json
 import logging
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -36,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR    = os.path.join(BASE_DIR, "data")
 MODEL_PATH  = os.path.join(BASE_DIR, "models", "svm_model.pkl")
 SCALER_PATH = os.path.join(BASE_DIR, "models", "scaler.pkl")
 
@@ -69,7 +72,7 @@ def run_training_pipeline() -> None:
     run_clustering()
 
     # Step 3 – supervised classification
-    print("\n[Step 3] Training SVM classifier (GridSearchCV) …")
+    print("\n[Step 3] Training SVM classifier (GridSearchCV) ...")
     from classifier import train_classifier
     svm, scaler, report = train_classifier()
 
@@ -101,61 +104,83 @@ def run_inference_pipeline() -> list[dict]:
     Step 1B → Step 3 → Step 4A → Step 4B → Step 5 (inference branch).
     Returns a list of result dicts (one per live product).
     """
-    print("\n" + "="*60)
-    print("  PriceGuard AI — INFERENCE MODE")
-    print("="*60)
+    import time
+    
+    interval = int(os.getenv("SCRAPE_INTERVAL_SECONDS", "300")) # 5 mins default
+    
+    while True:
+        print("\n" + "="*60)
+        print(f"  PriceGuard AI — INFERENCE MODE ({datetime.now().strftime('%H:%M:%S')})")
+        print("="*60)
 
-    # Step 1B – live scraping
-    print("\n[Step 1B] Scraping live products …")
-    from scraper import run_scraper
-    live_products = run_scraper()
+        # ── Step 1B: Live scraping ──
+        # Write initial status
+        status_file = os.path.join(DATA_DIR, "scraper_status.json")
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump({"status": "scraping", "message": "Fetching Jumia Egypt...", "timestamp": datetime.now().isoformat()}, f)
 
-    if not live_products:
-        print("  No live products found. Exiting inference.")
-        return []
+        from scraper import run_scraper
+        live_products = run_scraper()
 
-    # Reference price: use mean price from training data as baseline
-    import pandas as pd
-    import numpy as np
-    raw_csv = os.path.join(BASE_DIR, "data", "raw_products.csv")
-    if os.path.exists(raw_csv):
-        df_train = pd.read_csv(raw_csv)
-        reference_price = float(df_train["price"].median())
-    else:
-        reference_price = 50.0
+        if not live_products:
+            print("  No live products found. Sleeping...")
+            with open(status_file, "w", encoding="utf-8") as f:
+                json.dump({"status": "idle", "message": "No products found. Sleeping.", "timestamp": datetime.now().isoformat()}, f)
+            time.sleep(60)
+            continue
 
-    from react_loop    import run_react_loop
-    from drift_monitor import check_drift, trigger_outer_loop
+        import pandas as pd
+        raw_csv = os.path.join(BASE_DIR, "data", "raw_products.csv")
+        reference_price = float(pd.read_csv(raw_csv)["price"].median()) if os.path.exists(raw_csv) else 50.0
 
-    print(f"\n[ReAct Loop] Processing {len(live_products)} live products …\n")
+        from react_loop    import run_react_loop
+        from drift_monitor import check_drift, trigger_outer_loop
 
-    results = []
-    for product in live_products:
-        # Run the full 5-step / 7-path ReAct Inner Loop
-        try:
-            res = run_react_loop(product)
-            results.append(res)
-            
-            # Print brief summary
-            print(f"  ✓  {product.get('product_name','?')[:40]:<40} | "
-                  f"Score={res['score']:.3f} | Path={res['path_taken']} | "
-                  f"Action={res['action']['action_type']}")
-        except Exception as exc:
-            logger.error("ReAct loop failed for '%s': %s", product.get('product_name','?'), exc)
+        print(f"\n[ReAct Loop] Processing {len(live_products)} live products …\n")
 
-    # ── Drift Detection (End of Run — Outer Loop Check) ──────────────────────
-    if results:
-        print("\n[Drift Check] Monitoring system integrity …")
-        last_res = results[-1]
-        drift_report = check_drift(last_res["confidence"], live_products[-1], last_res["label"])
+        results = []
+        for idx, product in enumerate(live_products):
+            # Update scraper status for UI
+            with open(status_file, "w", encoding="utf-8") as f:
+                json.dump({
+                    "status": "processing",
+                    "current": product.get("product_name", "?"),
+                    "index": idx + 1,
+                    "total": len(live_products),
+                    "timestamp": datetime.now().isoformat()
+                }, f)
+
+            try:
+                res = run_react_loop(product)
+                results.append(res)
+                
+                # Persist latest reasoning for dashboard polling
+                state_file = os.path.join(DATA_DIR, "last_inference.json")
+                with open(state_file, "w", encoding="utf-8") as f:
+                    json.dump({"latest": res, "timestamp": datetime.now().isoformat()}, f)
+
+                print(f"  OK {product.get('product_name','?')[:40]:<40} | "
+                      f"Score={res['score']:.3f} | Path={res['path_taken']} | "
+                      f"Action={res['action']['action_type']}")
+            except Exception as exc:
+                logger.error("ReAct loop failed: %s", exc)
+
+        # ── Drift Check ──
+        if results:
+            print("\n[Drift Check] Monitoring system integrity …")
+            drift_report = check_drift(results[-1]["confidence"], live_products[-1], results[-1]["label"])
+            if drift_report["drift_triggered"]:
+                print("  [ALERT] DRIFT DETECTED! Retraining...")
+                trigger_outer_loop()
+            else:
+                print(f"  OK System Stable (EMA Conf: {drift_report['signal_1']['ema_confidence']:.2f})")
+
+        print(f"\n[pipeline] Cycle complete. Waiting {interval}s...")
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump({"status": "idle", "message": f"Cycle complete. Waiting {interval}s.", "timestamp": datetime.now().isoformat()}, f)
         
-        if drift_report["drift_triggered"]:
-            print("  🚨 DATA DRIFT DETECTED! Triggering Outer ReAct Loop (Autonomous Retraining)...")
-            trigger_outer_loop()
-        else:
-            print(f"  ✓  System Stable (EMA Conf: {drift_report['signal_1']['ema_confidence']:.2f})")
+        time.sleep(interval)
 
-    print(f"\n[pipeline] ✓  Inference complete — {len(results)} products processed.")
     return results
 
 

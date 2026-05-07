@@ -206,7 +206,8 @@ def run_react_loop(product_dict: dict) -> dict:
     forecast_data  = _forecast(category)
     forecast_trend = forecast_data.get("trend", "stable")
     forecast_7d    = forecast_data.get("forecast_7d", [])
-    trace.append({"step": "OBSERVE-3", "result": f"trend={forecast_trend}, day7={forecast_7d[-1]:.2f if forecast_7d else 'N/A'}"})
+    d7_val = f"{forecast_7d[-1]:.2f}" if forecast_7d else "N/A"
+    trace.append({"step": "OBSERVE-3", "result": f"trend={forecast_trend}, day7={d7_val}"})
 
     # ─────────────────────────────────────────────────────────────────────────
     # REASON 1 — Intelligent Score

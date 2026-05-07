@@ -14,6 +14,7 @@ Errors are caught and logged to pipeline.log — never crash the pipeline.
 import os
 import logging
 import warnings
+import requests
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -59,7 +60,7 @@ def generate_email_body(product_name: str, price_delta: float,
     if not api_key:
         logger.warning("GEMINI_API_KEY not set — returning fallback email body.")
         return (
-            f"⚠️ PriceGuard Alert for '{product_name}'\n\n"
+            f"[ALERT] PriceGuard Alert for '{product_name}'\n\n"
             f"A competitor has undercut the reference price by ${price_delta:.2f}. "
             f"The most influential pricing factor is '{top_shap_feature}'. "
             f"7-day forecast: {forecast_summary}.\n\n"
@@ -105,46 +106,61 @@ def generate_email_body(product_name: str, price_delta: float,
 
 def send_alert_email(product_name: str, email_body: str) -> bool:
     """
-    Send the pricing alert email via Standard SMTP (supports Mailtrap, Gmail, etc).
+    Send the pricing alert email via multiple SMTP providers (Mailtrap + Gmail).
+    Returns True if at least one provider succeeds.
     """
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "2525"))
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASS", "")
+    # 1. Standard / Mailtrap SMTP
+    providers = []
+    
+    m_host = os.getenv("SMTP_HOST")
+    if m_host:
+        providers.append({
+            "host": m_host,
+            "port": int(os.getenv("SMTP_PORT", "2525")),
+            "user": os.getenv("SMTP_USER"),
+            "pass": os.getenv("SMTP_PASS")
+        })
+        
+    g_host = os.getenv("GMAIL_SMTP_HOST")
+    if g_host:
+        providers.append({
+            "host": g_host,
+            "port": int(os.getenv("GMAIL_SMTP_PORT", "587")),
+            "user": os.getenv("GMAIL_SMTP_USER"),
+            "pass": os.getenv("GMAIL_SMTP_PASS")
+        })
+
     from_email = os.getenv("ALERT_FROM_EMAIL", "alerts@priceguard.com")
-    to_email = os.getenv("ALERT_TO_EMAIL", "manager@priceguard.com")
+    to_email   = os.getenv("ALERT_TO_EMAIL", "manager@priceguard.com")
 
-    if not smtp_host or not smtp_user:
-        logger.warning("SMTP credentials not set — simulating email send.")
-        print(f"\n[SIMULATED EMAIL]\nTo: {to_email}\nSubject: 🚨 PriceGuard Alert: {product_name}\n\n{email_body}\n")
+    if not providers:
+        logger.warning("No SMTP providers configured — simulating email send.")
+        print(f"\n[SIMULATED EMAIL]\nTo: {to_email}\nSubject: [ALERT] PriceGuard: {product_name}\n\n{email_body}\n")
         return False
 
-    try:
-        # Create a multipart message
-        message = MIMEMultipart("alternative")
-        message["Subject"] = f"🚨 PriceGuard Alert: {product_name}"
-        message["From"] = from_email
-        message["To"] = to_email
+    success_any = False
+    for p in providers:
+        try:
+            message = MIMEMultipart("alternative")
+            message["Subject"] = f"PriceGuard Alert: {product_name}"
+            message["From"] = from_email
+            message["To"] = to_email
+            
+            message.attach(MIMEText(email_body, "plain"))
+            message.attach(MIMEText(email_body.replace("\n", "<br>"), "html"))
 
-        # Create both plain and HTML versions
-        part1 = MIMEText(email_body, "plain")
-        part2 = MIMEText(email_body.replace("\n", "<br>"), "html")
-        message.attach(part1)
-        message.attach(part2)
-
-        # Connect and send
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            if smtp_port == 587:
-                server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.sendmail(from_email, to_email, message.as_string())
-
-        logger.info("Email sent for '%s' via SMTP.", product_name)
-        return True
-
-    except Exception as exc:
-        logger.error("SMTP error for '%s': %s", product_name, exc)
-        return False
+            with smtplib.SMTP(p["host"], p["port"], timeout=15) as server:
+                if p["port"] == 587 or "gmail" in p["host"]:
+                    server.starttls()
+                server.login(p["user"], p["pass"])
+                server.sendmail(from_email, to_email, message.as_string())
+            
+            logger.info("Email sent successfully via %s", p["host"])
+            success_any = True
+        except Exception as exc:
+            logger.error("SMTP error for %s: %s", p["host"], exc)
+            
+    return success_any
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +197,7 @@ def send_slack_notification(product_name: str, price: float, cluster_label: str,
 
     payload = {
         "text": (
-            f"🚨 *PriceGuard Alert* — *{product_name}* dropped to *${price:.2f}*.\n"
+            f"[ALERT] *PriceGuard Alert* — *{product_name}* dropped to *${price:.2f}*.\n"
             f"Cluster: `{cluster_label}` | SHAP score: `{shap_score:.4f}` | "
             f"Forecast: {forecast_summary}"
         )

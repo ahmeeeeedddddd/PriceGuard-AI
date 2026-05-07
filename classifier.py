@@ -63,8 +63,17 @@ def train_classifier():
         )
 
     df = pd.read_csv(LABELED_CSV)
+    print(f"[classifier] Loaded CSV: {len(df)} rows")
+    
+    # Check for NaNs per feature
+    for feat in FEATURES + [TARGET]:
+        nan_count = df[feat].isnull().sum()
+        if nan_count > 0:
+            print(f"[classifier] Column '{feat}' has {nan_count} NaNs")
+            
     df = df.dropna(subset=FEATURES + [TARGET])
-    logger.info("Training SVM on %d samples …", len(df))
+    print(f"[classifier] Samples after dropna: {len(df)}")
+    logger.info("Training SVM on %d samples ...", len(df))
 
     X = df[FEATURES].values
     y = df[TARGET].astype(int).values
@@ -110,7 +119,7 @@ def train_classifier():
     joblib.dump(svm,    MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
     logger.info("Model saved to %s | Scaler saved to %s.", MODEL_PATH, SCALER_PATH)
-    print(f"[classifier] ✓  svm_model.pkl and scaler.pkl saved.")
+    print(f"[classifier] OK svm_model.pkl and scaler.pkl saved.")
 
     return svm, scaler, report
 

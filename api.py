@@ -1,87 +1,104 @@
 """
-api.py — FastAPI Intelligent Interface
-=======================================
-Exposes the PriceGuard AI system via REST endpoints.
-Each endpoint corresponds to exactly one loop layer.
-
-Endpoints:
-  POST /classify  →  Runs the complete inner ReAct loop
-  GET  /forecast  →  Retrieves SARIMA trend for a category
-  GET  /drift     →  Reports current drift signal status
-  POST /recluster →  Manually triggers the outer ReAct loop
-  GET  /health    →  System status & model metadata
+api.py — PriceGuard AI Backend
+===============================
+FastAPI server to power the custom HTML/JS dashboard.
+Serves static files and provides real-time data endpoints.
 """
 
 import os
+import json
 import logging
-from fastapi import FastAPI, HTTPException, Body
+from typing import Dict
+from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from dotenv import load_dotenv
 
-# Load React Loop and other modules
+# Import core agentic modules
 from react_loop import run_react_loop
-from forecasting import run_forecasting
-from drift_monitor import check_drift, trigger_outer_loop
+from drift_monitor import check_drift
 
-app = FastAPI(title="PriceGuard AI Intelligent Service")
-logger = logging.getLogger("api")
+load_dotenv()
 
+app = FastAPI(title="PriceGuard AI API")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+
+if not os.path.exists(STATIC_DIR):
+    os.makedirs(STATIC_DIR)
+
+# ── Models ──────────────────────────────────────────────────────────────────
 class ProductInput(BaseModel):
     product_name: str
     price: float
-    rating: float = 3.0
-    review_count: int = 0
+    category: str
+    rating: float = 4.5
+    review_count: int = 50
     discount_percentage: float = 0.0
     stock_status: int = 1
-    category: str = "Uncategorized"
-    reference_price: Optional[float] = None
 
-@app.get("/health")
+# ── Endpoints ───────────────────────────────────────────────────────────────
+
+@app.get("/api/health")
 def health():
-    from pipeline import models_exist
-    return {
-        "status": "online",
-        "models_loaded": models_exist(),
-        "version": "1.1.0-agentic"
-    }
+    return {"status": "ok", "agent": "PriceGuard AI"}
 
-@app.post("/classify")
-def classify(product: ProductInput):
-    """Runs the full inner ReAct loop for a single product."""
+@app.get("/api/last_inference")
+def get_last_inference():
+    """Poll the latest reasoning from the autonomous pipeline."""
+    state_file = os.path.join(DATA_DIR, "last_inference.json")
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: return {"latest": None}
+    return {"latest": None}
+
+@app.get("/api/scraper_status")
+def get_scraper_status():
+    """Poll the current scraping progress."""
+    status_file = os.path.join(DATA_DIR, "scraper_status.json")
+    if os.path.exists(status_file):
+        try:
+            with open(status_file, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: return {"status": "offline"}
+    return {"status": "offline"}
+
+@app.post("/api/run_react")
+def run_manual_react(product: ProductInput):
+    """Trigger the ReAct reasoning loop for a manual input."""
     try:
-        result = run_react_loop(product.dict())
-        return result
+        res = run_react_loop(product.dict())
+        # Also check drift for this manual case
+        drift_report = check_drift(res["confidence"], product.dict(), res["label"])
+        return {
+            "result": res,
+            "drift": drift_report
+        }
     except Exception as e:
-        logger.error("API /classify error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/forecast/{category}")
-def forecast(category: str):
-    """Retrieves 7-day SARIMA forecast."""
-    try:
-        return run_forecasting(category=category)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/labeled_data")
+def get_labeled_data():
+    """Return clustered data for the UI map."""
+    path = os.path.join(DATA_DIR, "labeled_products.csv")
+    if os.path.exists(path):
+        import pandas as pd
+        df = pd.read_csv(path)
+        # Sample for frontend performance
+        return df.sample(min(len(df), 500)).to_dict("records")
+    return []
 
-@app.get("/drift")
-def drift_status():
-    """Returns current status of drift signals."""
-    # This usually needs a recent case to evaluate. 
-    # Returning metadata about thresholds for now.
-    return {
-        "signal_1_threshold": 0.60,
-        "signal_2_threshold": 0.15,
-        "monitoring": "active"
-    }
+# ── Static File Serving ─────────────────────────────────────────────────────
 
-@app.post("/recluster")
-def recluster():
-    """Manually triggers the outer ReAct loop (autonomous retraining)."""
-    success = trigger_outer_loop()
-    if success:
-        return {"status": "success", "message": "Outer loop completed. Models updated."}
-    else:
-        raise HTTPException(status_code=500, detail="Reclustering failed or was blocked by rollback gate.")
+@app.get("/")
+def read_root():
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 if __name__ == "__main__":
     import uvicorn

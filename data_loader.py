@@ -116,7 +116,11 @@ def load_and_clean() -> pd.DataFrame:
         rng = np.random.default_rng(42)
         df["review_count"] = rng.integers(0, 5000, size=len(df)).astype(int)
     else:
-        df["review_count"] = pd.to_numeric(df["review_count"], errors="coerce").fillna(0).astype(int)
+        df["review_count"] = pd.to_numeric(df["review_count"], errors="coerce")
+        median_reviews = df["review_count"].median()
+        if pd.isna(median_reviews):
+            median_reviews = 0
+        df["review_count"] = df["review_count"].fillna(median_reviews).astype(int)
 
     # ── discount_percentage ───────────────────────────────────────────────────
     if "discount_percentage" not in df.columns:
@@ -125,7 +129,7 @@ def load_and_clean() -> pd.DataFrame:
             list_price = df["List Price"].apply(_parse_price)
             df["discount_percentage"] = (
                 ((list_price - df["price"]) / list_price.replace(0, np.nan)) * 100
-            ).clip(lower=0)
+            ).clip(lower=0).fillna(0)
         else:
             rng = np.random.default_rng(43)
             df["discount_percentage"] = rng.uniform(0, 40, size=len(df))
@@ -145,8 +149,11 @@ def load_and_clean() -> pd.DataFrame:
     before = len(df)
     df = df.dropna(subset=["price"])
     df = df[df["price"] > 0]
-    # Fill missing ratings with median
-    df["rating"] = df["rating"].fillna(df["rating"].median())
+    # Fill missing ratings with median or fallback 3.0
+    median_rating = df["rating"].median()
+    if pd.isna(median_rating):
+        median_rating = 3.0
+    df["rating"] = df["rating"].fillna(median_rating)
     df["rating"] = df["rating"].clip(lower=0, upper=5)
     logger.info("Dropped %d rows with null/invalid price.", before - len(df))
 
@@ -181,7 +188,7 @@ def run_data_loader() -> pd.DataFrame:
     os.makedirs(os.path.join(BASE_DIR, "data"), exist_ok=True)
     df.to_csv(OUT_CSV, index=False)
     logger.info("Saved cleaned dataset to %s.", OUT_CSV)
-    print(f"[data_loader] ✓  {len(df)} products saved to {OUT_CSV}")
+    print(f"[data_loader] OK {len(df)} products saved to {OUT_CSV}")
     return df
 
 

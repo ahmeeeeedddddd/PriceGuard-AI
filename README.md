@@ -7,7 +7,7 @@
 
 ## Overview
 
-PriceGuard AI monitors competitor prices, clusters products into pricing tiers, classifies new listings in real-time using an SVM, explains decisions with SHAP, forecasts future prices with SARIMA, and autonomously fires email + Slack alerts when a competitor undercuts your threshold.
+PriceGuard AI monitors competitor prices, clusters products into pricing tiers, classifies new listings in real-time, explains decisions with SHAP, forecasts future prices with SARIMA, and autonomously fires triple-redundant alerts (Mailtrap + Gmail + Slack).
 
 ```
 Sense (Data) → Reason (Cluster + Classify + Explain + Forecast) → Act (Alert)
@@ -15,153 +15,67 @@ Sense (Data) → Reason (Cluster + Classify + Explain + Forecast) → Act (Alert
 
 ---
 
-## Project Structure
-
-```
-priceguard_ai/
-├── app.py              # Streamlit dashboard
-├── scraper.py          # Step 1B: live web scraping (Noon.com)
-├── data_loader.py      # Step 1A: Kaggle dataset ingestion & cleaning
-├── clustering.py       # Step 2: DBSCAN + Fuzzy C-Means
-├── classifier.py       # Step 3: SVM training & inference
-├── explainability.py   # Step 4A: SHAP KernelExplainer
-├── forecasting.py      # Step 4B: SARIMA + drift detection
-├── actions.py          # Step 5: Gemini + SendGrid + Slack alerts
-├── pipeline.py         # Orchestrator (train OR infer)
-├── data/
-│   ├── amazon_products.csv   ← Kaggle dataset (pre-downloaded)
-│   ├── raw_products.csv      ← output of data_loader.py
-│   ├── labeled_products.csv  ← output of clustering.py
-│   └── live_products.csv     ← output of scraper.py
-├── models/
-│   ├── svm_model.pkl
-│   └── scaler.pkl
-├── outputs/
-│   ├── cluster_plot.png
-│   ├── shap_plot.png
-│   └── forecast_plot.png
-├── .env                ← API keys (never commit)
-└── requirements.txt
-```
-
----
-
 ## Setup
 
 ### 1. Install dependencies
-
 ```bash
-cd priceguard_ai
 pip install -r requirements.txt
 ```
 
-### 2. Configure API keys
-
-Edit `.env` with your real values:
+### 2. Configure API keys (.env)
+The system uses a **Dual-SMTP** approach for reliability.
 
 ```env
-SENDGRID_API_KEY=SG.xxxx
-ALERT_FROM_EMAIL=alerts@yourcompany.com
-ALERT_TO_EMAIL=manager@yourcompany.com
-GEMINI_API_KEY=AIzaSy...
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
+# Mailtrap Sandbox (Testing)
+SMTP_HOST=sandbox.smtp.mailtrap.io
+SMTP_PORT=2525
+SMTP_USER=your_user
+SMTP_PASS=your_pass
+
+# Gmail Production (Real Alerts)
+GMAIL_SMTP_HOST=smtp.gmail.com
+GMAIL_SMTP_PORT=587
+GMAIL_SMTP_USER=your-email@gmail.com
+GMAIL_SMTP_PASS=your-app-password  # (16-char code from Google Security)
+
+ALERT_FROM_EMAIL=alerts@priceguard.ai
+ALERT_TO_EMAIL=your-email@gmail.com
+GEMINI_API_KEY=your_key
+SLACK_WEBHOOK_URL=your_webhook
 PRICE_ALERT_THRESHOLD=0.10
 ```
 
-### 3. Ensure the Kaggle dataset is present
-
-```
-data/amazon_products.csv   ← already placed
-```
-
 ---
 
-## Running the System
+## 🚀 How to Run
 
-### Train (first run — no models exist)
+### 1. Start the Live Agent
+The pipeline orchestrator handles everything from data ingestion to reasoning and alerting.
 ```bash
 python pipeline.py
 ```
-This will:
-1. Clean the Kaggle CSV → `data/raw_products.csv`
-2. Run DBSCAN + Fuzzy C-Means → `data/labeled_products.csv` + `outputs/cluster_plot.png`
-3. Train SVM via GridSearchCV → `models/svm_model.pkl` + `models/scaler.pkl`
+- **First Run**: Automatically trains the clustering and classification models.
+- **Subsequent Runs**: Scrapes live data and executes the ReAct reasoning loop.
+- **Drift Detection**: Triggers retraining if market conditions change significantly.
 
-### Infer (subsequent runs — models exist)
-```bash
-python pipeline.py
-```
-This will:
-1. Scrape live products from Noon.com → `data/live_products.csv`
-2. Classify each product with the SVM
-3. Compute SHAP explanations → `outputs/shap_plot.png`
-4. Forecast 7-day prices with SARIMA → `outputs/forecast_plot.png`
-5. Fire email + Slack alerts for underpriced products
-
-### Launch the dashboard
+### 2. Launch the AI Dashboard
+Monitor the agent's internal "brain" in real-world time.
 ```bash
 streamlit run app.py
 ```
+- **Zone 1**: Drift & Training Health.
+- **Zone 2**: PCA Cluster Visualization.
+- **Zone 3**: Live Inference Reasoning Traces.
+- **Zone 4**: SHAP Explainability (Why did the agent act?).
+- **Zone 5**: SARIMA Forecast (Where is the price going?).
+- **Zone 6**: Recent Action History & Alert Logs.
 
 ---
 
-## Pipeline Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        SENSE (Data)                              │
-│  Step 1A: Kaggle CSV (training)  │  Step 1B: Live Scraper       │
-└───────────────────┬──────────────┴──────────────────────────────┘
-                    │
-┌───────────────────▼──────────────────────────────────────────────┐
-│                       REASON (Models)                             │
-│  Step 2: DBSCAN + Fuzzy C-Means → Cluster Labels                 │
-│  Step 3: SVM (RBF + GridSearchCV) → Pricing State                │
-│  Step 4A: SHAP KernelExplainer → Feature Importance              │
-│  Step 4B: SARIMA (pmdarima) → 7-Day Forecast + Drift Detection   │
-└───────────────────┬──────────────────────────────────────────────┘
-                    │
-┌───────────────────▼──────────────────────────────────────────────┐
-│                         ACT (Alerts)                              │
-│  Step 5: Gemini LLM body → SendGrid email + Slack webhook        │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Key Technical Decisions
-
-| Design Choice | Rationale |
-|---|---|
-| DBSCAN before FCM | Removes outliers that would skew fuzzy cluster centroids |
-| FCM → SVM (two-stage) | FCM labels data unsupervised; SVM learns a fast decision boundary |
-| `random_state=42` everywhere | Full reproducibility |
-| SHAP KernelExplainer | Model-agnostic; works with any sklearn estimator |
-| `pmdarima.auto_arima(seasonal=True, m=7)` | Automatic order selection with weekly seasonality |
-| Gemini → SendGrid | Free LLM + transactional email; swappable via env vars |
-| `st.session_state` + `st.rerun()` | Proper Streamlit state management (no deprecated APIs) |
-
----
-
-## Cluster Labels
-
-| Label | Cluster ID | Description |
-|---|---|---|
-| Budget | 0 | Lowest mean price tier |
-| Mid-Range | 1 | Middle price tier |
-| Premium | 2 | Highest mean price tier |
-
-*Labels are assigned by sorting FCM centroids by mean price at cluster time.*
-
----
-
-## Environment Variables Reference
-
-| Variable | Description |
-|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key for LLM email body |
-| `SENDGRID_API_KEY` | SendGrid key for transactional email |
-| `ALERT_FROM_EMAIL` | Sender email address |
-| `ALERT_TO_EMAIL` | Recipient email address |
-| `SLACK_WEBHOOK_URL` | Incoming webhook for #pricing-alerts |
-| `PRICE_ALERT_THRESHOLD` | Decimal threshold (default `0.10` = 10%) |
+## Project Structure
+- `pipeline.py`: Orchestrator (Full system entry point).
+- `app.py`: Streamlit Dashboard.
+- `react_loop.py`: The 7-path Reasoning Engine.
+- `actions.py`: Dual-SMTP & Slack delivery logic.
+- `data_loader.py`, `clustering.py`, `classifier.py`: The ML backbone.
+- `explainability.py`, `forecasting.py`: Advanced agentic signals.

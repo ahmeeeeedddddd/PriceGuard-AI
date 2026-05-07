@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PriceGuard AI | Real-Time Intelligence</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo">
+                    <i data-lucide="shield-check"></i>
+                </div>
+                <div>
+                    <h1>PriceGuard AI</h1>
+                    <span>E-commerce Intelligence</span>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Pipeline Steps</h3>
+                <ul class="steps-list">
+                    <li class="completed"><i data-lucide="database"></i> 1. Data Ingestion</li>
+                    <li class="completed"><i data-lucide="layers"></i> 2. Clustering (FCM)</li>
+                    <li class="completed"><i data-lucide="cpu"></i> 3. Classification (SVM)</li>
+                    <li class="active"><i data-lucide="brain-circuit"></i> 4. SHAP + SARIMA</li>
+                    <li><i data-lucide="bell"></i> 5. Alert Action</li>
+                </ul>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Agent Simulation</h3>
+                <form id="product-form" class="product-form">
+                    <div class="form-group">
+                        <label>Product Name</label>
+                        <input type="text" id="p_name" placeholder="Enter product name..." value="ASUS Gaming Laptop">
+                    </div>
+                    <div class="form-group">
+                        <label>Price ($)</label>
+                        <input type="number" id="p_price" value="1200">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Rating (0-5)</label>
+                            <input type="number" id="p_rating" value="4.5" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Review Count</label>
+                            <input type="number" id="p_reviews" value="50">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select id="p_cat">
+                            <option value="Electronics">Electronics</option>
+                            <option value="Toys & Games">Toys & Games</option>
+                            <option value="Sports & Outdoors">Sports & Outdoors</option>
+                        </select>
+                    </div>
+                    <button type="button" id="run-btn" class="primary-btn">
+                        <i data-lucide="zap"></i> Simulate ReAct Loop
+                    </button>
+                    <p style="font-size: 0.7rem; color: #64748b; margin-top: 0.5rem; text-align: center;">Manual simulation bypasses the live scraper.</p>
+                </form>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header>
+                <div class="header-main">
+                    <div>
+                        <h2>Real-Time Price Intelligence Dashboard</h2>
+                        <p>Continuous Sense-Reason-Act Pipeline • Jumia Egypt Live</p>
+                    </div>
+                    <div id="scraper-status-pill" class="status-pill offline">
+                        <i data-lucide="circle-dot"></i>
+                        <span>Backend Offline</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- Zone 1: Live Scraper Feed (New) -->
+                <div class="card full-width collapsible">
+                    <div class="card-header" onclick="toggleCard(this)">
+                        <i data-lucide="loader" class="icon-sm spinner-slow"></i>
+                        <h3>Live Web Scraping Progress</h3>
+                        <i data-lucide="chevron-down" class="chevron"></i>
+                    </div>
+                    <div class="card-body" id="scraper-feed-body">
+                        <div class="scraping-meta">
+                            <p id="scraper-msg">Waiting for pipeline starting...</p>
+                            <div class="progress-bar-container">
+                                <div id="scraper-progress" class="progress-bar" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        <div id="current-task" class="current-task">
+                            Initializing ingestion engine...
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 2: Live Reasoning -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <i data-lucide="activity" class="icon-sm"></i>
+                        <h3>Agent Reasoning Trace</h3>
+                    </div>
+                    <div class="card-body" id="live-classification-body">
+                        <div class="placeholder">Run the pipeline to see classification results</div>
+                    </div>
+                </div>
+
+                <!-- Row 2 -->
+                <div class="card">
+                    <div class="card-header">
+                        <i data-lucide="info" class="icon-sm"></i>
+                        <h3>SHAP Explainability</h3>
+                    </div>
+                    <div class="card-body" id="shap-body">
+                        <div class="placeholder">Available after first inference</div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <i data-lucide="trending-up" class="icon-sm"></i>
+                        <h3>Forecasting (SARIMA)</h3>
+                    </div>
+                    <div class="card-body" id="forecast-body">
+                        <div class="placeholder">Calculating trends...</div>
+                    </div>
+                </div>
+
+                <!-- Alert Log -->
+                <div class="card full-width collapsible">
+                    <div class="card-header" onclick="toggleCard(this)">
+                        <i data-lucide="bell" class="icon-sm"></i>
+                        <h3>Intelligent Alert Log</h3>
+                        <i data-lucide="chevron-down" class="chevron"></i>
+                    </div>
+                    <div class="card-body" id="alert-log-body">
+                        <div class="placeholder">No alerts fired yet</div>
+                    </div>
+                </div>
+
+                <!-- Map -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <i data-lucide="map" class="icon-sm"></i>
+                        <h3>Global Market Clusters</h3>
+                    </div>
+                    <div class="card-body map-container">
+                        <canvas id="clusterMap"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/script.js"></script>
+    <script>
+        lucide.createIcons();
+        function toggleCard(header) {
+            const card = header.parentElement;
+            card.classList.toggle('collapsed');
+        }
+    </script>
+</body>
+</html>

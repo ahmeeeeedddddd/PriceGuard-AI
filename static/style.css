@@ -1,0 +1,97 @@
+:root {
+    --bg-color: #f0f4f8;
+    --sidebar-bg: #fff;
+    --card-bg: #fff;
+    --text-primary: #1a202c;
+    --text-secondary: #4a5568;
+    --accent-blue: #3182ce;
+    --accent-green: #38a169;
+    --accent-red: #e53e3e;
+    --border-color: #e2e8f0;
+    --sidebar-width: 300px;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Outfit', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-primary);
+}
+
+.app-container {
+    display: flex;
+}
+
+/* Sidebar */
+.sidebar {
+    width: var(--sidebar-width);
+    background: var(--sidebar-bg);
+    border-right: 1px solid var(--border-color);
+    height: 100vh;
+    position: fixed;
+    padding: 1.5rem;
+    overflow-y: auto;
+}
+
+.brand { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 2rem; }
+.logo { background: var(--accent-blue); padding: 0.5rem; border-radius: 8px; color: white; display: flex; }
+.brand h1 { font-size: 1.1rem; }
+.brand span { font-size: 0.7rem; color: var(--text-secondary); }
+
+.sidebar-section { margin-bottom: 2rem; }
+.sidebar-section h3 { font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.75rem; }
+.steps-list { list-style: none; font-size: 0.8rem; }
+.steps-list li { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; color: #a0aec0; }
+.steps-list li.completed { color: var(--text-primary); }
+.steps-list li.active { color: var(--accent-blue); font-weight: 700; }
+
+.form-group { margin-bottom: 0.75rem; }
+.form-group label { display: block; font-size: 0.7rem; font-weight: 600; margin-bottom: 0.25rem; }
+.form-group input, .form-group select { width: 100%; padding: 0.5rem; border: 1px solid var(--border-color); border-radius: 4px; font-size: 0.8rem; }
+.form-row { display: flex; gap: 0.5rem; }
+
+.primary-btn { width: 100%; padding: 0.6rem; background: var(--accent-blue); color: white; border: none; border-radius: 4px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+
+/* Main Content */
+.main-content { margin-left: var(--sidebar-width); flex: 1; padding: 2rem; }
+.header-main { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; }
+.status-pill { display: flex; align-items: center; gap: 0.4rem; font-size: 0.7rem; font-weight: 700; padding: 0.3rem 0.6rem; border-radius: 100px; }
+.status-pill.online { background: #c6f6d5; color: #22543d; }
+.status-pill.offline { background: #fed7d7; color: #742a2a; }
+
+.dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.full-width { grid-column: span 2; }
+
+.card { background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); transition: height 0.3s; }
+.card-header { padding: 1rem; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 0.5rem; cursor: default; }
+.card.collapsible .card-header { cursor: pointer; }
+.card-header h3 { font-size: 0.9rem; font-weight: 700; }
+.chevron { margin-left: auto; width: 16px; transition: transform 0.3s; }
+.card-body { padding: 1.25rem; }
+
+/* Collapsible behavior */
+.card.collapsed .card-body { display: none; }
+.card.collapsed .chevron { transform: rotate(-90deg); }
+
+.icon-sm { width: 18px; height: 18px; }
+.placeholder { text-align: center; color: #a0aec0; padding: 1rem; font-size: 0.8rem; }
+
+/* Scraper Progress */
+.progress-bar-container { background: #edf2f7; height: 8px; border-radius: 100px; margin: 0.5rem 0; overflow: hidden; }
+.progress-bar { background: var(--accent-blue); height: 100%; transition: width 0.5s ease-out; }
+.current-task { font-size: 0.75rem; font-family: monospace; background: #2d3748; color: #48bb78; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; }
+
+/* Scoring */
+.score-box { text-align: center; margin-bottom: 1rem; }
+.score-val { font-size: 2.5rem; font-weight: 800; }
+
+.alert-item { padding: 0.75rem; border-left: 3px solid var(--accent-red); background: #fff5f5; border-radius: 0 4px 4px 0; margin-bottom: 0.5rem; font-size: 0.8rem; }
+.map-container { height: 250px; }
+
+.spinner-slow { animation: spin 4s linear infinite; }
+@keyframes spin { from {transform: rotate(0deg);} to {transform: rotate(360deg);} }

@@ -206,7 +206,7 @@ def run_clustering() -> pd.DataFrame:
     _save_cluster_plot(df_clean, X_clean)
 
     print(
-        f"[clustering] ✓  {len(df_clean)} products labeled "
+        f"[clustering] OK  {len(df_clean)} products labeled "
         f"(budget={( final_labels==0).sum()}, "
         f"mid={( final_labels==1).sum()}, "
         f"premium={(final_labels==2).sum()})"

@@ -126,9 +126,21 @@ def explain_product(product_dict: dict, confidence_score: float) -> tuple[float,
     def predict_proba(X):
         return svm.predict_proba(X)
 
-    explainer   = shap.KernelExplainer(predict_proba, background)
-    # shap_values is list of arrays (one per class); take the predicted class
-    shap_values = explainer.shap_values(x_scaled, nsamples=100)
+    explainer = shap.KernelExplainer(predict_proba, background)
+    # shap_values is typically a list of arrays (one per class) for multi-class.
+    # We want features for the predicted class.
+    shap_results = explainer.shap_values(x_scaled, nsamples=100)
+    
+    if isinstance(shap_results, list):
+        shap_values = shap_results
+    else:
+        # If it's a single array (N, F, C) or (N, F), wrap it or handle it
+        if shap_results.ndim == 3:
+            # (N, F, C) -> list of C arrays of (N, F)
+            shap_values = [shap_results[:, :, i] for i in range(shap_results.shape[2])]
+        else:
+            # (N, F) -> wrap in list
+            shap_values = [shap_results]
 
     # Pick the class with highest probability
     pred_class  = int(svm.predict(x_scaled)[0])
@@ -169,16 +181,25 @@ def get_shap_means(df_labeled: pd.DataFrame) -> dict:
     background = _get_background_data(scaler)
     explainer = shap.KernelExplainer(svm.predict_proba, background)
     
-    # This might take a while, but it's an offline cycle
-    shap_values = explainer.shap_values(X_scaled, nsamples=100)
+    # Wait for computation
+    shap_results = explainer.shap_values(X_scaled, nsamples=100)
+    
+    # Standardise to list of arrays (one per class)
+    if isinstance(shap_results, list):
+        shap_values = shap_results
+    elif shap_results.ndim == 3:
+        # (N, F, C) -> switch to (C, N, F) list 
+        shap_values = [shap_results[:, :, i] for i in range(shap_results.shape[2])]
+    else:
+        # Single class case
+        shap_values = [shap_results]
     
     cluster_means = {}
     for cluster_id in range(3):
-        # shap_values is a list of arrays (one per class)
-        # We want the values for the class matching cluster_id
-        mask = sampled_df["cluster_label"] == cluster_id
-        if mask.any():
-            relevant_sv = shap_values[cluster_id][mask.values]
+        mask = (sampled_df["cluster_label"] == cluster_id).values
+        if mask.any() and cluster_id < len(shap_values):
+            # relevant_sv has shape (n_in_cluster, n_features)
+            relevant_sv = shap_values[cluster_id][mask]
             cluster_means[cluster_id] = relevant_sv.mean(axis=0).tolist()
         else:
             cluster_means[cluster_id] = [0.0] * 5
