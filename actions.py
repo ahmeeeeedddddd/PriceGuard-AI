@@ -14,7 +14,9 @@ Errors are caught and logged to pipeline.log — never crash the pipeline.
 import os
 import logging
 import warnings
-import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
 warnings.simplefilter("ignore", FutureWarning)
@@ -103,47 +105,45 @@ def generate_email_body(product_name: str, price_delta: float,
 
 def send_alert_email(product_name: str, email_body: str) -> bool:
     """
-    Send the pricing alert email via SendGrid.
-
-    Parameters
-    ----------
-    product_name : str
-        Used in the email subject line.
-    email_body : str
-        Pre-generated body text (plain English, no HTML required).
-
-    Returns
-    -------
-    bool
-        True if the email was sent successfully, False otherwise.
+    Send the pricing alert email via Standard SMTP (supports Mailtrap, Gmail, etc).
     """
-    api_key = os.getenv("SENDGRID_API_KEY", "")
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "2525"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASS", "")
     from_email = os.getenv("ALERT_FROM_EMAIL", "alerts@priceguard.com")
     to_email = os.getenv("ALERT_TO_EMAIL", "manager@priceguard.com")
 
-    if not api_key:
-        logger.warning("SENDGRID_API_KEY not set — simulating email send.")
-        print(f"[SIMULATED EMAIL] To: {to_email}\nSubject: 🚨 PriceGuard Alert: {product_name}\n{email_body}")
+    if not smtp_host or not smtp_user:
+        logger.warning("SMTP credentials not set — simulating email send.")
+        print(f"\n[SIMULATED EMAIL]\nTo: {to_email}\nSubject: 🚨 PriceGuard Alert: {product_name}\n\n{email_body}\n")
         return False
 
     try:
-        from sendgrid import SendGridAPIClient
-        from sendgrid.helpers.mail import Mail
+        # Create a multipart message
+        message = MIMEMultipart("alternative")
+        message["Subject"] = f"🚨 PriceGuard Alert: {product_name}"
+        message["From"] = from_email
+        message["To"] = to_email
 
-        message = Mail(
-            from_email=from_email,
-            to_emails=to_email,
-            subject=f"🚨 PriceGuard Alert: Competitor Price Drop Detected — {product_name}",
-            plain_text_content=email_body,
-            html_content=email_body.replace("\n", "<br>"),
-        )
-        sg = SendGridAPIClient(api_key)
-        response = sg.send(message)
-        logger.info("Email sent for '%s', status %s.", product_name, response.status_code)
+        # Create both plain and HTML versions
+        part1 = MIMEText(email_body, "plain")
+        part2 = MIMEText(email_body.replace("\n", "<br>"), "html")
+        message.attach(part1)
+        message.attach(part2)
+
+        # Connect and send
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            if smtp_port == 587:
+                server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(from_email, to_email, message.as_string())
+
+        logger.info("Email sent for '%s' via SMTP.", product_name)
         return True
 
     except Exception as exc:
-        logger.error("SendGrid error for '%s': %s", product_name, exc)
+        logger.error("SMTP error for '%s': %s", product_name, exc)
         return False
 
 

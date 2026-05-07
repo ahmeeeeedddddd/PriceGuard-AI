@@ -12,7 +12,6 @@ fake-useragent
 joblib
 plotly
 matplotlib
-sendgrid
 google-generativeai
 python-dotenv
 faiss-cpu
