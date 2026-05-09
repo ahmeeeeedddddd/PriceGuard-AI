@@ -27,6 +27,13 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
+# Ensure UTF-8 output on Windows
+if sys.platform == "win32":
+    import sys
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 load_dotenv()
 
 logging.basicConfig(
@@ -107,6 +114,8 @@ def run_inference_pipeline() -> list[dict]:
     import time
     
     interval = int(os.getenv("SCRAPE_INTERVAL_SECONDS", "300")) # 5 mins default
+    default_query    = os.getenv("DEFAULT_QUERY", "laptop")
+    default_category = os.getenv("DEFAULT_CATEGORY", "Electronics")
     
     while True:
         print("\n" + "="*60)
@@ -117,7 +126,7 @@ def run_inference_pipeline() -> list[dict]:
         # Write initial status
         status_file = os.path.join(DATA_DIR, "scraper_status.json")
         with open(status_file, "w", encoding="utf-8") as f:
-            json.dump({"status": "scraping", "message": "Fetching Jumia Egypt...", "timestamp": datetime.now().isoformat()}, f)
+            json.dump({"status": "scraping", "message": "Fetching Jumia Egypt (Multi-category)...", "timestamp": datetime.now().isoformat()}, f)
 
         from scraper import run_scraper
         live_products = run_scraper()

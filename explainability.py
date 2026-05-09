@@ -173,7 +173,7 @@ def get_shap_means(df_labeled: pd.DataFrame) -> dict:
     svm, scaler = _load_models()
     
     # 1. Sample up to 100 per cluster to avoid huge computation
-    sampled_df = df_labeled.groupby("cluster_label").apply(lambda x: x.sample(min(len(x), 100), random_state=42)).reset_index(drop=True)
+    sampled_df = df_labeled.sample(frac=1, random_state=RANDOM_SEED).groupby("cluster_label").head(100).reset_index(drop=True)
     
     X_raw = sampled_df[FEATURES].fillna(0).values
     X_scaled = scaler.transform(X_raw)

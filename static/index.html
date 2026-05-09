@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PriceGuard AI | Real-Time Intelligence</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -29,12 +29,18 @@
                     <li class="completed"><i data-lucide="database"></i> 1. Data Ingestion</li>
                     <li class="completed"><i data-lucide="layers"></i> 2. Clustering (FCM)</li>
                     <li class="completed"><i data-lucide="cpu"></i> 3. Classification (SVM)</li>
-                    <li class="active"><i data-lucide="brain-circuit"></i> 4. SHAP + SARIMA</li>
-                    <li><i data-lucide="bell"></i> 5. Alert Action</li>
+                    <li id="tab-dash" class="active" onclick="switchMainTab('dashboard')" style="cursor:pointer">
+                        <i data-lucide="layout-dashboard"></i> 4. Live Dashboard
+                    </li>
+                    <li id="tab-res" onclick="switchMainTab('results')" style="cursor:pointer">
+                        <i data-lucide="list"></i> 5. Results & Market Data <span id="results-badge" class="badge" style="display:none">0</span>
+                    </li>
+                    <li><i data-lucide="bell"></i> 6. Alert Action</li>
                 </ul>
             </div>
 
-            <div class="sidebar-section">
+            <!-- Agent Simulation Panel -->
+            <div class="sidebar-section" id="panel-sim">
                 <h3>Agent Simulation</h3>
                 <form id="product-form" class="product-form">
                     <div class="form-group">
@@ -59,16 +65,18 @@
                         <label>Category</label>
                         <select id="p_cat">
                             <option value="Electronics">Electronics</option>
-                            <option value="Toys & Games">Toys & Games</option>
-                            <option value="Sports & Outdoors">Sports & Outdoors</option>
+                            <option value="Toys &amp; Games">Toys &amp; Games</option>
+                            <option value="Sports &amp; Outdoors">Sports &amp; Outdoors</option>
                         </select>
                     </div>
                     <button type="button" id="run-btn" class="primary-btn">
                         <i data-lucide="zap"></i> Simulate ReAct Loop
                     </button>
+                    <p id="run-error" style="font-size:0.7rem; color:#e53e3e; margin-top:0.5rem; text-align:center; display:none;"></p>
                     <p style="font-size: 0.7rem; color: #64748b; margin-top: 0.5rem; text-align: center;">Manual simulation bypasses the live scraper.</p>
                 </form>
             </div>
+
         </aside>
 
         <!-- Main Content -->
@@ -87,27 +95,134 @@
             </header>
 
             <div class="dashboard-grid">
-                <!-- Zone 1: Live Scraper Feed (New) -->
-                <div class="card full-width collapsible">
-                    <div class="card-header" onclick="toggleCard(this)">
-                        <i data-lucide="loader" class="icon-sm spinner-slow"></i>
-                        <h3>Live Web Scraping Progress</h3>
-                        <i data-lucide="chevron-down" class="chevron"></i>
-                    </div>
-                    <div class="card-body" id="scraper-feed-body">
-                        <div class="scraping-meta">
-                            <p id="scraper-msg">Waiting for pipeline starting...</p>
-                            <div class="progress-bar-container">
-                                <div id="scraper-progress" class="progress-bar" style="width: 0%"></div>
+                <!-- Dashboard View -->
+                <div id="dashboard-view" style="display: contents;">
+                    <!-- Zone 1: Live Scraper Feed -->
+                    <div class="card full-width collapsible">
+                        <div class="card-header" onclick="toggleCard(this)">
+                            <i data-lucide="loader" class="icon-sm spinner-slow"></i>
+                            <h3>Live Web Scraping Progress</h3>
+                            <i data-lucide="chevron-down" class="chevron"></i>
+                        </div>
+                        <div class="card-body" id="scraper-feed-body">
+                            <div class="scraping-meta">
+                                <p id="scraper-msg">Waiting for pipeline starting...</p>
+                                <div class="progress-bar-container">
+                                    <div id="scraper-progress" class="progress-bar" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div id="current-task" class="current-task">
+                                Initializing ingestion engine...
                             </div>
                         </div>
-                        <div id="current-task" class="current-task">
-                            Initializing ingestion engine...
+                    </div>
+
+                    <!-- Zone 3: Live Reasoning -->
+                    <div class="card full-width">
+                        <div class="card-header">
+                            <i data-lucide="activity" class="icon-sm"></i>
+                            <h3>Agent Reasoning Trace</h3>
+                        </div>
+                        <div class="card-body" id="live-classification-body">
+                            <div class="placeholder">Run the pipeline to see classification results</div>
+                        </div>
+                    </div>
+
+                    <!-- Row 2 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <i data-lucide="info" class="icon-sm"></i>
+                            <h3>SHAP Explainability</h3>
+                        </div>
+                        <div class="card-body" id="shap-body">
+                            <div class="placeholder">Available after first inference</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <i data-lucide="trending-up" class="icon-sm"></i>
+                            <h3>Forecasting (SARIMA)</h3>
+                        </div>
+                        <div class="card-body" id="forecast-body">
+                            <div class="placeholder">Calculating trends...</div>
+                        </div>
+                    </div>
+
+                    <!-- Alert Log -->
+                    <div class="card full-width collapsible">
+                        <div class="card-header" onclick="toggleCard(this)">
+                            <i data-lucide="bell" class="icon-sm"></i>
+                            <h3>Intelligent Alert Log</h3>
+                            <i data-lucide="chevron-down" class="chevron"></i>
+                        </div>
+                        <div class="card-body" id="alert-log-body">
+                            <div class="placeholder">No alerts fired yet</div>
+                        </div>
+                    </div>
+
+                    <!-- Map -->
+                    <div class="card full-width">
+                        <div class="card-header">
+                            <i data-lucide="map" class="icon-sm"></i>
+                            <h3>Global Market Clusters</h3>
+                        </div>
+                        <div class="card-body map-container">
+                            <canvas id="clusterMap"></canvas>
                         </div>
                     </div>
                 </div>
 
-                <!-- Zone 2: Live Reasoning -->
+                <!-- Results View -->
+                <div id="results-view" style="display: none; grid-column: span 2;">
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
+                        <!-- Zone 2: Market Comparison -->
+                        <div class="card" id="market-stats-card">
+                            <div class="card-header">
+                                <i data-lucide="bar-chart-2" class="icon-sm"></i>
+                                <h3>Market Price Comparison</h3>
+                            </div>
+                            <div class="card-body">
+                                <div class="market-stats-grid">
+                                    <div class="stat-item">
+                                        <label>Average Market Price</label>
+                                        <div class="stat-value" id="market-avg">-</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <label>Price Range</label>
+                                        <div class="stat-value" id="market-range">-</div>
+                                    </div>
+                                    <div class="stat-item">
+                                        <label>Price Difference</label>
+                                        <div class="stat-value" id="market-diff">-</div>
+                                    </div>
+                                </div>
+                                <div class="matched-products-list">
+                                    <h4 style="margin-bottom: 0.5rem; font-size: 0.8rem; color: #4a5568;">Top Similar Products Found</h4>
+                                    <div id="matched-list">
+                                        <div class="placeholder">Run a simulation to see market data.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Results History List -->
+                        <div class="card">
+                            <div class="card-header">
+                                <i data-lucide="history" class="icon-sm"></i>
+                                <h3 style="flex:1;">Results History</h3>
+                                <button onclick="clearResults()" style="font-size:0.7rem; color:#e53e3e; background:none; border:none; cursor:pointer;">Clear</button>
+                            </div>
+                            <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                                <div id="results-list">
+                                    <div class="placeholder">No results yet. Run a simulation first.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 3: Live Reasoning -->
                 <div class="card full-width">
                     <div class="card-header">
                         <i data-lucide="activity" class="icon-sm"></i>
@@ -165,12 +280,31 @@
         </main>
     </div>
 
-    <script src="/static/script.js"></script>
+    <script src="/static/script.js?v=5"></script>
     <script>
         lucide.createIcons();
+
+        function switchMainTab(tab) {
+            document.getElementById('dashboard-view').style.display = tab === 'dashboard' ? 'contents' : 'none';
+            document.getElementById('results-view').style.display = tab === 'results' ? 'block' : 'none';
+            
+            // Update active state in sidebar list
+            document.getElementById('tab-dash').classList.toggle('active', tab === 'dashboard');
+            document.getElementById('tab-res').classList.toggle('active', tab === 'results');
+            
+            lucide.createIcons();
+        }
+
         function toggleCard(header) {
             const card = header.parentElement;
             card.classList.toggle('collapsed');
+        }
+
+        function clearResults() {
+            document.getElementById('results-list').innerHTML = '<div class="placeholder">No results yet. Run a simulation first.</div>';
+            document.getElementById('results-badge').style.display = 'none';
+            document.getElementById('results-badge').innerText = '0';
+            window._resultCount = 0;
         }
     </script>
 </body>

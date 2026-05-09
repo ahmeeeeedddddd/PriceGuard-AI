@@ -1,5 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Elements
     const runBtn = document.getElementById('run-btn');
     const liveBody = document.getElementById('live-classification-body');
     const shapBody = document.getElementById('shap-body');
@@ -9,11 +8,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const scraperProgress = document.getElementById('scraper-progress');
     const currentTask = document.getElementById('current-task');
     const statusPill = document.getElementById('scraper-status-pill');
+    const runError = document.getElementById('run-error');
+    const resultsList = document.getElementById('results-list');
+    const resultsBadge = document.getElementById('results-badge');
 
     let clusterChart = null;
     let seenAlerts = new Set();
+    window._resultCount = 0;
 
-    // ── Polling: Agent Reasoning ──────────────────────────────────────────────
+    // ── Polling: Agent Reasoning ────────────────────────────────────────────
     async function pollInference() {
         try {
             const resp = await fetch('/api/last_inference');
@@ -22,12 +25,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {}
     }
 
-    // ── Polling: Scraper Status ───────────────────────────────────────────────
+    // ── Polling: Scraper Status ─────────────────────────────────────────────
     async function pollScraper() {
         try {
             const resp = await fetch('/api/scraper_status');
             const data = await resp.json();
-            
+
             statusPill.className = 'status-pill online';
             statusPill.querySelector('span').innerText = 'Backend Active';
 
@@ -37,13 +40,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 scraperProgress.style.width = `${pct}%`;
                 currentTask.innerText = `[REASONING] Analyzing ${data.current}`;
             } else if (data.status === 'scraping') {
-                scraperMsg.innerText = "Sensing Market...";
-                scraperProgress.style.width = "40%";
-                currentTask.innerText = "[SENSE] Fetching Jumia Egypt API stream...";
+                scraperMsg.innerText = data.message || 'Sensing Market...';
+                scraperProgress.style.width = '40%';
+                currentTask.innerText = '[SENSE] Fetching Jumia Egypt API stream...';
+            } else if (data.status === 'matching') {
+                scraperMsg.innerText = data.message || 'Validating matches...';
+                scraperProgress.style.width = '65%';
+                currentTask.innerText = '[MATCH] Filtering products by similarity...';
+            } else if (data.status === 'reasoning') {
+                scraperMsg.innerText = data.message || 'Reasoning...';
+                scraperProgress.style.width = '85%';
+                currentTask.innerText = '[REACT] Running reasoning loop...';
+            } else if (data.status === 'complete') {
+                scraperMsg.innerText = data.message || 'Analysis complete.';
+                scraperProgress.style.width = '100%';
+                currentTask.innerText = '[DONE] Pipeline cycle complete.';
             } else {
-                scraperMsg.innerText = data.message || "Idle";
-                scraperProgress.style.width = "0%";
-                currentTask.innerText = "[IDLE] Waiting for next autonomous cycle.";
+                scraperMsg.innerText = data.message || 'Idle';
+                scraperProgress.style.width = '0%';
+                currentTask.innerText = '[IDLE] Waiting for next autonomous cycle.';
             }
         } catch (e) {
             statusPill.className = 'status-pill offline';
@@ -51,11 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // ── Update Main Dashboard UI ────────────────────────────────────────────
     function updateReasoningUI(res) {
-        // Live trace
         const score = res.score;
         const color = score > 0.75 ? '#e53e3e' : (score > 0.5 ? '#dd6b20' : '#38a169');
-        
+
         liveBody.innerHTML = `
             <div class="score-box">
                 <div class="score-val" style="color:${color}">${score.toFixed(3)}</div>
@@ -68,7 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        // SHAP
         shapBody.innerHTML = `
             <div style="font-size:0.8rem">
                 <p><strong>Key Driver:</strong> ${res.dominant_shap.toUpperCase()}</p>
@@ -76,7 +90,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        // Forecast
         forecastBody.innerHTML = `
             <div style="font-size:0.8rem">
                 <p><strong>Market Trend:</strong> ${res.forecast_trend.toUpperCase()}</p>
@@ -84,7 +97,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        // Alert (Deduplicated by Timestamp/Product)
         if (res.action && res.action.action_type !== 'monitor') {
             const alertKey = `${res.product_name}-${res.action.action_type}`;
             if (!seenAlerts.has(alertKey)) {
@@ -98,35 +110,136 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
                 if (alertLog.querySelector('.placeholder')) alertLog.innerHTML = '';
                 alertLog.prepend(item);
-                // Keep only last 10
                 if (alertLog.children.length > 10) alertLog.removeChild(alertLog.lastChild);
             }
         }
     }
 
-    // Manual Simulation
+    // ── Add a Result Card to the Results Tab ────────────────────────────────
+    function addResultCard(payload, data) {
+        const res = data.result;
+        const ms = data.market_stats || {};
+        const verdict = res.verdict || res.label?.toUpperCase() || 'UNKNOWN';
+        const verdictColor = verdict === 'UNDERPRICED' ? '#38a169' : verdict === 'OVERPRICED' ? '#e53e3e' : '#dd6b20';
+        const priceDiff = data.result.price_diff_pct != null
+            ? `${data.result.price_diff_pct > 0 ? '+' : ''}${data.result.price_diff_pct.toFixed(1)}%`
+            : 'N/A';
+
+        // Remove placeholder
+        const ph = resultsList.querySelector('.placeholder');
+        if (ph) ph.remove();
+
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `
+            <div class="result-card-header">
+                <span class="result-product">${payload.product_name}</span>
+                <span class="result-verdict" style="color:${verdictColor}">${verdict}</span>
+            </div>
+            <div class="result-meta">
+                <div class="result-row"><span>Price</span><strong>$${payload.price}</strong></div>
+                <div class="result-row"><span>Category</span><strong>${payload.category}</strong></div>
+                <div class="result-row"><span>Score</span><strong>${res.score.toFixed(3)}</strong></div>
+                <div class="result-row"><span>Confidence</span><strong>${(res.confidence * 100).toFixed(0)}%</strong></div>
+                <div class="result-row"><span>Path</span><strong>Path ${res.path_taken}</strong></div>
+                <div class="result-row"><span>Action</span><strong>${res.action?.action_type || 'N/A'}</strong></div>
+                <div class="result-row"><span>Avg Market $</span><strong>${ms.avg_price != null ? '$' + ms.avg_price.toFixed(0) : 'N/A'}</strong></div>
+                <div class="result-row"><span>vs Market</span><strong style="color:${verdictColor}">${priceDiff}</strong></div>
+                <div class="result-row"><span>Matches</span><strong>${res.matched_count ?? 'N/A'}</strong></div>
+                <div class="result-row"><span>Key Driver</span><strong>${res.dominant_shap?.toUpperCase() || 'N/A'}</strong></div>
+                <div class="result-row"><span>Trend</span><strong>${res.forecast_trend?.toUpperCase() || 'N/A'}</strong></div>
+            </div>
+            <div class="result-time">${new Date().toLocaleTimeString()}</div>
+        `;
+
+        resultsList.prepend(card);
+
+        // Update badge
+        window._resultCount = (window._resultCount || 0) + 1;
+        resultsBadge.innerText = window._resultCount;
+        resultsBadge.style.display = 'inline-block';
+    }
+
+    // ── Manual Simulation ───────────────────────────────────────────────────
     runBtn.addEventListener('click', async () => {
+        let priceVal = parseFloat(document.getElementById('p_price').value);
+        if (isNaN(priceVal)) priceVal = null;
+        
         const payload = {
             product_name: document.getElementById('p_name').value,
-            price: parseFloat(document.getElementById('p_price').value),
+            price: priceVal,
             category: document.getElementById('p_cat').value,
-            rating: parseFloat(document.getElementById('p_rating').value),
-            review_count: parseInt(document.getElementById('p_reviews').value)
+            rating: parseFloat(document.getElementById('p_rating').value) || 4.5,
+            review_count: parseInt(document.getElementById('p_reviews').value) || 50
         };
+
+        runBtn.disabled = true;
         runBtn.innerHTML = 'Thinking...';
+        runError.style.display = 'none';
+
         try {
+            // 60s timeout — scraping + reasoning takes time
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
             const resp = await fetch('/api/run_react', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
+
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+                throw new Error(err.detail || `Server error ${resp.status}`);
+            }
+
             const data = await resp.json();
+
+            if (data.error) {
+                runError.innerText = `⚠ ${data.error}`;
+                runError.style.display = 'block';
+                return;
+            }
+
             updateReasoningUI(data.result);
-        } catch (e) { alert("Backend offline"); }
-        finally { runBtn.innerHTML = '<i data-lucide="zap"></i> Simulate ReAct Loop'; lucide.createIcons(); }
+            addResultCard(payload, data);
+
+            // Show market stats card
+            if (data.market_stats) {
+                document.getElementById('market-stats-card').style.display = '';
+                document.getElementById('market-avg').innerText = `$${data.market_stats.avg_price?.toFixed(2) ?? '-'}`;
+                document.getElementById('market-range').innerText = `$${data.market_stats.min_price?.toFixed(0) ?? '-'} – $${data.market_stats.max_price?.toFixed(0) ?? '-'}`;
+                const diff = data.result.price_diff_pct;
+                const diffEl = document.getElementById('market-diff');
+                diffEl.innerText = diff != null ? `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%` : '-';
+                diffEl.style.color = diff < -10 ? '#38a169' : diff > 10 ? '#e53e3e' : '#dd6b20';
+            }
+
+            if (data.matched_products?.length) {
+                const ml = document.getElementById('matched-list');
+                ml.innerHTML = data.matched_products.slice(0, 5).map(p =>
+                    `<div style="font-size:0.75rem; padding:0.4rem 0; border-bottom:1px solid #edf2f7">
+                        <strong>${p.product_name?.slice(0, 55) ?? 'N/A'}</strong>
+                        <span style="float:right; color:#3182ce">$${p.price ?? '-'}</span>
+                    </div>`
+                ).join('');
+            }
+
+        } catch (e) {
+            let msg = e.message;
+            if (e.name === 'AbortError') msg = 'Request timed out (>60s). Try again.';
+            runError.innerText = `⚠ ${msg}`;
+            runError.style.display = 'block';
+        } finally {
+            runBtn.disabled = false;
+            runBtn.innerHTML = '<i data-lucide="zap"></i> Simulate ReAct Loop';
+            lucide.createIcons();
+        }
     });
 
-    // Chart init
+    // ── Chart ───────────────────────────────────────────────────────────────
     async function initMap() {
         try {
             const resp = await fetch('/api/labeled_data');
@@ -143,7 +256,13 @@ document.addEventListener('DOMContentLoaded', () => {
                             backgroundColor: c === 0 ? '#e53e3e' : (c === 1 ? '#dd6b20' : '#38a169')
                         }))
                     },
-                    options: { maintainAspectRatio: false, scales: { x: {title: {display:true, text: 'Price'}}, y: {title: {display:true, text: 'Rating'}} } }
+                    options: {
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {title: {display: true, text: 'Price'}},
+                            y: {title: {display: true, text: 'Rating'}}
+                        }
+                    }
                 });
             }
         } catch (e) {}

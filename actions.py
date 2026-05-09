@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def generate_email_body(product_name: str, price_delta: float,
-                        top_shap_feature: str, forecast_summary: str) -> str:
+                        top_shap_feature: str, forecast_summary: str, **kwargs) -> str:
     """
     Call the Gemini API to write a 3-paragraph pricing strategy recommendation.
 
@@ -56,6 +56,11 @@ def generate_email_body(product_name: str, price_delta: float,
     str
         A plain-English email body with 3 paragraphs.
     """
+    market_stats = kwargs.get("market_stats", {})
+    avg_price = market_stats.get("avg_price", 0.0)
+    min_price = market_stats.get("min_price", 0.0)
+    max_price = market_stats.get("max_price", 0.0)
+
     api_key = os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         logger.warning("GEMINI_API_KEY not set — returning fallback email body.")
@@ -79,6 +84,7 @@ def generate_email_body(product_name: str, price_delta: float,
             "(no bullet points, no markdown, no bold).\n\n"
             f"Product: {product_name}\n"
             f"Competitor price is ${price_delta:.2f} below our reference price.\n"
+            f"Market Stats: Average Market Price is ${avg_price:.2f} (Range: ${min_price:.2f} - ${max_price:.2f}).\n"
             f"Most important pricing factor (from SHAP): {top_shap_feature}\n"
             f"7-day SARIMA price forecast: {forecast_summary}\n\n"
             "Paragraph 1 — Summarise the competitive threat clearly.\n"
@@ -263,6 +269,7 @@ def fire_alert(product_data: dict, shap_score: float, forecast_data: dict) -> di
         price_delta=price_delta,
         top_shap_feature=top_shap_feature,
         forecast_summary=forecast_summary,
+        market_stats=product_data.get("market_stats", {})
     )
 
     # 2. Send email via SendGrid

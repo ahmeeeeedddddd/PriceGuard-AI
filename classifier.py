@@ -108,9 +108,9 @@ def train_classifier():
     report  = classification_report(y_test, y_pred, target_names=list(LABEL_NAMES.values()))
     cm      = confusion_matrix(y_test, y_pred)
 
-    print("\n── Classification Report ──")
+    print("\n-- Classification Report --")
     print(report)
-    print("── Confusion Matrix ──")
+    print("-- Confusion Matrix --")
     print(cm)
     logger.info("SVM classification report:\n%s", report)
 
