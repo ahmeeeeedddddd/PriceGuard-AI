@@ -23,8 +23,9 @@ run_react_loop(product_dict) → dict
 import os
 import logging
 import warnings
-import time
 import copy
+import json
+import time
 import numpy as np
 
 warnings.simplefilter("ignore", FutureWarning)
@@ -39,6 +40,36 @@ MAX_SHAP_RETRY  = 2
 
 FEATURES        = ["price", "rating", "review_count", "discount_percentage", "stock_status"]
 LABEL_NAMES     = {0: "budget", 1: "mid-range", 2: "premium"}
+
+RECENT_ALERTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "recent_alerts.json")
+
+def _is_redundant_alert(product_name, action_type):
+    """Prevent sending the same alert for the same product within 1 hour."""
+    if not os.path.exists(RECENT_ALERTS_FILE): return False
+    try:
+        with open(RECENT_ALERTS_FILE, "r") as f:
+            cache = json.load(f)
+        key = f"{product_name}-{action_type}"
+        last_time = cache.get(key, 0)
+        if time.time() - last_time < 3600: # 1 hour
+            return True
+    except: pass
+    return False
+
+def _mark_alert_sent(product_name, action_type):
+    cache = {}
+    if os.path.exists(RECENT_ALERTS_FILE):
+        try:
+            with open(RECENT_ALERTS_FILE, "r") as f:
+                cache = json.load(f)
+        except: pass
+    key = f"{product_name}-{action_type}"
+    cache[key] = time.time()
+    # Cleanup old entries (> 24h)
+    now = time.time()
+    cache = {k: v for k, v in cache.items() if now - v < 86400}
+    with open(RECENT_ALERTS_FILE, "w") as f:
+        json.dump(cache, f)
 
 
 # ── Lazy imports — these modules exist in the same package ────────────────────
@@ -337,19 +368,24 @@ def run_react_loop(product_dict: dict) -> dict:
 
     if action["action_type"] in ("price_alert", "arima_arbitrated_alert", "shap_driven_alert"):
         if price < ref_price * (1 - threshold):
-            trace.append({"step": "ACT", "action": "fire_alert"})
-            try:
-                enriched = {
-                    **product_dict,
-                    "cluster_label":    final_label,
-                    "top_shap_feature": dominant_shap,
-                    "reference_price":  ref_price,
-                }
-                alert_result = _fire(enriched, shap_score, forecast_data)
-            except Exception as exc:
-                logger.error("fire_alert failed in ReAct loop: %s", exc)
-                alert_result = {"email_status": False, "slack_status": False}
-            trace.append({"step": "ACT", "result": f"email={alert_result.get('email_status')}, slack={alert_result.get('slack_status')}"})
+            # ── DE-DUPLICATION CHECK ──
+            if _is_redundant_alert(product_dict.get("product_name"), action["action_type"]):
+                trace.append({"step": "ACT", "result": "alert skipped (redundant in last 1h)"})
+            else:
+                trace.append({"step": "ACT", "action": "fire_alert"})
+                try:
+                    enriched = {
+                        **product_dict,
+                        "cluster_label":    final_label,
+                        "top_shap_feature": dominant_shap,
+                        "reference_price":  ref_price,
+                    }
+                    alert_result = _fire(enriched, shap_score, forecast_data)
+                    _mark_alert_sent(product_dict.get("product_name"), action["action_type"])
+                except Exception as exc:
+                    logger.error("fire_alert failed in ReAct loop: %s", exc)
+                    alert_result = {"email_status": False, "slack_status": False}
+                trace.append({"step": "ACT", "result": f"email={alert_result.get('email_status')}, slack={alert_result.get('slack_status')}"})
 
     # ─────────────────────────────────────────────────────────────────────────
     # OBSERVE (final) — Record outcome
